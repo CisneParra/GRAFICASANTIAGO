@@ -1,4 +1,5 @@
 const OrderRepository = require('../repositories/order.repository');
+const EmailService = require('../services/EmailService'); // <--- 1. IMPORTANTE: Importar el servicio
 
 class OrderController {
     
@@ -15,6 +16,7 @@ class OrderController {
                 paymentInfo
             } = req.body;
 
+            // Crear la orden en la Base de Datos
             const order = await OrderRepository.create({
                 orderItems,
                 shippingInfo,
@@ -26,6 +28,16 @@ class OrderController {
                 paidAt: Date.now(),
                 user: req.user._id // El ID viene del middleware de autenticación
             });
+
+            // 2. ¡ENVIAR EL CORREO DE CONFIRMACIÓN! ✉️
+            // Lo envolvemos en un try/catch interno para que si falla el correo, 
+            // la orden no se cancele (el cliente igual compró).
+            try {
+                // req.user tiene el email y nombre gracias al middleware de auth
+                await EmailService.sendOrderConfirmation(order, req.user);
+            } catch (emailError) {
+                console.error("⚠️ Alerta: La orden se creó pero el correo falló:", emailError.message);
+            }
 
             res.status(201).json({
                 success: true,
@@ -111,10 +123,10 @@ class OrderController {
 // Exportamos las funciones individuales para que coincidan con la ruta
 const controller = new OrderController();
 module.exports = {
-    newOrder: controller.newOrder,
-    getSingleOrder: controller.getSingleOrder,
-    myOrders: controller.myOrders,
-    allOrders: controller.allOrders,
-    updateOrder: controller.updateOrder,
-    deleteOrder: controller.deleteOrder
+    newOrder: (req, res, next) => controller.newOrder(req, res, next),
+    getSingleOrder: (req, res, next) => controller.getSingleOrder(req, res, next),
+    myOrders: (req, res, next) => controller.myOrders(req, res, next),
+    allOrders: (req, res, next) => controller.allOrders(req, res, next),
+    updateOrder: (req, res, next) => controller.updateOrder(req, res, next),
+    deleteOrder: (req, res, next) => controller.deleteOrder(req, res, next)
 };

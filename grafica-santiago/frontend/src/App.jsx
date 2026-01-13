@@ -6,6 +6,12 @@ import {
 } from 'lucide-react';
 
 // ==========================================
+// CONFIGURACIÓN DE RED (IP DEL SERVIDOR)
+// ==========================================
+// Apuntamos a tu IP local para que funcione en red LAN.
+const API_URL = 'http://172.18.130.134:3000'; 
+
+// ==========================================
 // 1. CONTEXTO DE AUTENTICACIÓN
 // ==========================================
 const AuthContext = createContext();
@@ -29,7 +35,6 @@ const AuthProvider = ({ children }) => {
         setUser(JSON.parse(storedUser));
         setToken(storedToken);
       } catch (e) {
-        console.error("Error parsing stored user", e);
         localStorage.clear();
       }
     }
@@ -37,7 +42,7 @@ const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await fetch('http://localhost:3000/api/v1/auth/login', {
+      const response = await fetch(`${API_URL}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -59,7 +64,7 @@ const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const response = await fetch('http://localhost:3000/api/v1/auth/register', {
+      const response = await fetch(`${API_URL}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData)
@@ -83,7 +88,7 @@ const AuthProvider = ({ children }) => {
     setUser(null);
     setToken(null);
     localStorage.clear();
-    window.location.href = "/"; // Recargar para limpiar estados
+    window.location.href = "/";
   };
 
   return (
@@ -224,7 +229,7 @@ const AppContent = ({ currentView, setCurrentView, showAuth, setShowAuth, authMo
               <NavButton active={currentView === 'products'} onClick={() => setCurrentView('products')}>Productos</NavButton>
               <NavButton active={currentView === 'categories'} onClick={() => setCurrentView('categories')}>Categorías</NavButton>
               
-              {/* BOTÓN ADMIN: Verificamos 'admin' tal cual viene del backend */}
+              {/* BOTÓN ADMIN */}
               {user?.role === 'admin' && (
                 <button 
                   onClick={() => setCurrentView('admin')} 
@@ -298,7 +303,6 @@ const HomePage = ({ setCurrentView }) => (
           Ver Catálogo Completo
         </button>
       </div>
-      {/* Decoración de fondo */}
       <div className="absolute top-0 right-0 -mt-20 -mr-20 w-96 h-96 bg-white opacity-10 rounded-full blur-3xl"></div>
       <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-80 h-80 bg-purple-500 opacity-20 rounded-full blur-3xl"></div>
     </section>
@@ -322,13 +326,14 @@ const FeatureCard = ({ icon: Icon, title, text }) => (
 );
 
 const ProductsPage = () => {
+  const { token, user } = useAuth();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const response = await fetch('http://localhost:3000/api/v1/products');
+        const response = await fetch(`${API_URL}/api/v1/products`);
         const data = await response.json();
         if (data.success) setProducts(data.products || []);
       } catch (error) { console.error(error); } 
@@ -336,6 +341,44 @@ const ProductsPage = () => {
     };
     fetchProducts();
   }, []);
+
+  const handleBuy = async (product) => {
+    if (!token) return alert("Por favor inicia sesión para realizar una compra.");
+    
+    if(!confirm(`¿Deseas comprar "${product.nombre}" por $${product.precio.minorista}?`)) return;
+
+    try {
+      const orderData = {
+        orderItems: [{
+          name: product.nombre,
+          quantity: 1,
+          image: product.imagenes && product.imagenes[0] ? product.imagenes[0].url : "placeholder",
+          price: product.precio.minorista,
+          product: product._id
+        }],
+        shippingInfo: { direccion: "Dirección de Prueba", ciudad: "Loja", telefono: user.telefono || "0999999999" },
+        itemsPrice: product.precio.minorista,
+        totalPrice: product.precio.minorista,
+        paymentInfo: { id: "test_payment_id", status: "succeeded" }
+      };
+
+      const res = await fetch(`${API_URL}/api/v1/order/new`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify(orderData)
+      });
+
+      if(res.ok) {
+        alert("✅ ¡Compra realizada con éxito! Revisa tu correo electrónico para ver la confirmación.");
+      } else {
+        const errData = await res.json();
+        alert("Error al comprar: " + (errData.message || "Intente nuevamente"));
+      }
+    } catch(e) { console.error(e); alert("Error de conexión"); }
+  };
 
   if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div></div>;
 
@@ -378,8 +421,11 @@ const ProductsPage = () => {
                     <p className="text-xs text-gray-400 uppercase font-bold">Precio</p>
                     <span className="text-xl font-black text-gray-900">${product.precio?.minorista?.toFixed(2)}</span>
                   </div>
-                  <button className="bg-gray-900 text-white p-2.5 rounded-xl hover:bg-blue-600 transition shadow-lg shadow-gray-200 hover:shadow-blue-200">
-                    <Plus className="w-5 h-5" />
+                  <button 
+                    onClick={() => handleBuy(product)}
+                    className="bg-gray-900 text-white px-4 py-2.5 rounded-xl hover:bg-blue-600 transition shadow-lg shadow-gray-200 hover:shadow-blue-200 flex items-center gap-2 font-medium"
+                  >
+                    <ShoppingCart className="w-4 h-4" /> Comprar
                   </button>
                 </div>
               </div>
@@ -483,7 +529,7 @@ const InventoryManager = ({ token }) => {
 
   const fetchProducts = async () => {
     try {
-        const res = await fetch('http://localhost:3000/api/v1/products');
+        const res = await fetch(`${API_URL}/api/v1/products`);
         const data = await res.json();
         if (data.success) setProducts(data.products || []);
     } catch (e) { console.error(e); }
@@ -492,7 +538,7 @@ const InventoryManager = ({ token }) => {
   const handleDelete = async (id) => {
     if(!confirm("¿Estás seguro de eliminar este producto de forma permanente?")) return;
     try {
-      const res = await fetch(`http://localhost:3000/api/v1/products/${id}`, { 
+      const res = await fetch(`${API_URL}/api/v1/products/${id}`, { 
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -516,7 +562,7 @@ const InventoryManager = ({ token }) => {
     };
 
     try {
-      const res = await fetch('http://localhost:3000/api/v1/products', {
+      const res = await fetch(`${API_URL}/api/v1/products`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -653,7 +699,7 @@ export function ReportsView({ token }) {
     }
 
     try {
-      const res = await fetch(`http://localhost:3000${endpoint}`, {
+      const res = await fetch(`${API_URL}${endpoint}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -770,7 +816,7 @@ export function NotificationsManagement({ token, showNotification }) {
   const fetchNotifications = async () => {
     try {
       // Intenta conectar al backend, si falla usa array vacío
-      const res = await fetch('http://localhost:3000/api/notifications', { headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/api/notifications`, { headers: { 'Authorization': `Bearer ${token}` } });
       if(res.ok) {
         const data = await res.json();
         if (data.success) setNotifications(data.data);
