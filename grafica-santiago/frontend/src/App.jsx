@@ -2,13 +2,12 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { 
   ShoppingCart, Search, Menu, Bell, Package, BarChart3, 
   Users, LogOut, Grid, TrendingUp, DollarSign, 
-  AlertCircle, CheckCircle, Clock, Trash2, Plus, X 
+  AlertCircle, CheckCircle, Clock, Trash2, Plus, X, User as UserIcon, Save
 } from 'lucide-react';
 
 // ==========================================
 // CONFIGURACIÓN DE RED (IP DEL SERVIDOR)
 // ==========================================
-// Apuntamos a tu IP local para que funcione en red LAN.
 const API_URL = 'http://172.18.130.134:3000'; 
 
 // ==========================================
@@ -26,7 +25,6 @@ const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
 
-  // Cargar sesión al iniciar
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     const storedToken = localStorage.getItem('token');
@@ -84,6 +82,29 @@ const AuthProvider = ({ children }) => {
     }
   };
 
+  // HU-006: Función para actualizar perfil
+  const updateProfile = async (updatedData) => {
+    try {
+        const response = await fetch(`${API_URL}/api/v1/me/update`, {
+            method: 'PUT',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updatedData)
+        });
+        const data = await response.json();
+        if(data.success) {
+            setUser(data.user);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            return { success: true };
+        }
+        return { success: false, message: data.message };
+    } catch (error) {
+        return { success: false, message: "Error de conexión" };
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -92,14 +113,14 @@ const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, token, login, register, updateProfile, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
 // ==========================================
-// 2. COMPONENTES DE LOGIN / REGISTRO
+// 2. FORMULARIOS LOGIN/REGISTRO
 // ==========================================
 const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
   const [email, setEmail] = useState('');
@@ -124,9 +145,7 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
         <h2 className="text-3xl font-bold text-gray-800">¡Hola de nuevo! 👋</h2>
         <p className="text-gray-500 mt-2">Ingresa a tu cuenta para continuar</p>
       </div>
-      
       {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-100 flex items-center gap-2"><AlertCircle className="w-4 h-4"/>{error}</div>}
-      
       <div className="space-y-4">
         <input type="email" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition" />
         <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition" />
@@ -147,7 +166,7 @@ const RegisterForm = ({ onSuccess, onSwitchToLogin }) => {
 
   const handleSubmit = async () => {
     if (!formData.email || !formData.password || formData.password.length < 6) {
-      setError('Completa todos los campos. La contraseña debe tener al menos 6 caracteres.');
+      setError('Completa todos los campos. Contraseña min 6 caracteres.');
       return;
     }
     setError('');
@@ -186,6 +205,10 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState('login');
+  
+  // ESTADOS NUEVOS PARA BÚSQUEDA Y FILTROS
+  const [searchTerm, setSearchTerm] = useState(''); 
+  const [selectedCategory, setSelectedCategory] = useState('');
 
   return (
     <AuthProvider>
@@ -194,14 +217,32 @@ export default function App() {
           currentView={currentView} setCurrentView={setCurrentView}
           showAuth={showAuth} setShowAuth={setShowAuth}
           authMode={authMode} setAuthMode={setAuthMode}
+          searchTerm={searchTerm} setSearchTerm={setSearchTerm}
+          selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory}
         />
       </div>
     </AuthProvider>
   );
 }
 
-const AppContent = ({ currentView, setCurrentView, showAuth, setShowAuth, authMode, setAuthMode }) => {
+const AppContent = ({ 
+    currentView, setCurrentView, showAuth, setShowAuth, authMode, setAuthMode,
+    searchTerm, setSearchTerm, selectedCategory, setSelectedCategory
+}) => {
   const { user, isAuthenticated, logout } = useAuth();
+
+  // Función para manejar la búsqueda en el Header
+  const handleSearch = (e) => {
+      setSearchTerm(e.target.value);
+      // Si el usuario escribe, vamos automáticamente a la vista de productos
+      if(currentView !== 'products') setCurrentView('products');
+  };
+
+  // Función para ir a una categoría desde el Home
+  const goToCategory = (cat) => {
+      setSelectedCategory(cat);
+      setCurrentView('products');
+  };
 
   if (showAuth) {
     return (
@@ -220,7 +261,8 @@ const AppContent = ({ currentView, setCurrentView, showAuth, setShowAuth, authMo
       <header className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-50 border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-8">
-            <h1 className="text-2xl font-black text-blue-700 tracking-tight cursor-pointer flex items-center gap-2" onClick={() => setCurrentView('home')}>
+            <h1 className="text-2xl font-black text-blue-700 tracking-tight cursor-pointer flex items-center gap-2" 
+                onClick={() => { setCurrentView('home'); setSearchTerm(''); setSelectedCategory(''); }}>
               <div className="bg-blue-600 text-white p-1 rounded-lg"><Package className="w-5 h-5"/></div>
               Gráfica Santiago
             </h1>
@@ -229,7 +271,6 @@ const AppContent = ({ currentView, setCurrentView, showAuth, setShowAuth, authMo
               <NavButton active={currentView === 'products'} onClick={() => setCurrentView('products')}>Productos</NavButton>
               <NavButton active={currentView === 'categories'} onClick={() => setCurrentView('categories')}>Categorías</NavButton>
               
-              {/* BOTÓN ADMIN */}
               {user?.role === 'admin' && (
                 <button 
                   onClick={() => setCurrentView('admin')} 
@@ -241,8 +282,20 @@ const AppContent = ({ currentView, setCurrentView, showAuth, setShowAuth, authMo
             </nav>
           </div>
           
-          <div className="flex items-center space-x-3">
-            <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition"><Search className="w-5 h-5" /></button>
+          <div className="flex items-center space-x-4">
+            
+            {/* HU-017: BARRA DE BÚSQUEDA */}
+            <div className="hidden md:flex items-center bg-gray-100 rounded-full px-4 py-2 w-64 border focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition">
+                <Search className="w-4 h-4 text-gray-400 mr-2" />
+                <input 
+                    type="text" 
+                    placeholder="Buscar producto..." 
+                    className="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder-gray-400"
+                    value={searchTerm}
+                    onChange={handleSearch}
+                />
+            </div>
+
             <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition relative">
               <ShoppingCart className="w-5 h-5" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
@@ -250,9 +303,10 @@ const AppContent = ({ currentView, setCurrentView, showAuth, setShowAuth, authMo
             
             {isAuthenticated ? (
               <div className="flex items-center space-x-3 pl-4 border-l ml-2">
-                <div className="text-right hidden sm:block leading-tight">
+                {/* Clic en el nombre lleva al Perfil HU-006 */}
+                <div className="text-right hidden sm:block leading-tight cursor-pointer hover:opacity-80" onClick={() => setCurrentView('profile')}>
                   <p className="text-sm font-bold text-gray-800">{user?.nombre}</p>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">{user?.role === 'admin' ? 'Administrador' : 'Cliente'}</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Mi Perfil</p>
                 </div>
                 <button onClick={logout} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition" title="Cerrar Sesión">
                   <LogOut className="w-5 h-5" />
@@ -269,8 +323,9 @@ const AppContent = ({ currentView, setCurrentView, showAuth, setShowAuth, authMo
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {currentView === 'home' && <HomePage setCurrentView={setCurrentView} />}
-        {currentView === 'products' && <ProductsPage />}
-        {currentView === 'categories' && <CategoriesPage />}
+        {currentView === 'products' && <ProductsPage searchTerm={searchTerm} selectedCategory={selectedCategory} />}
+        {currentView === 'categories' && <CategoriesPage onSelectCategory={goToCategory} />}
+        {currentView === 'profile' && <ProfilePage />}
         {currentView === 'admin' && <AdminDashboard />} 
       </main>
     </>
@@ -325,26 +380,39 @@ const FeatureCard = ({ icon: Icon, title, text }) => (
   </div>
 );
 
-const ProductsPage = () => {
+// HU-017 & HU-018: Página de Productos con Lógica de Filtros
+const ProductsPage = ({ searchTerm, selectedCategory }) => {
   const { token, user } = useAuth();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchProducts = async () => {
+      setLoading(true);
       try {
-        const response = await fetch(`${API_URL}/api/v1/products`);
+        // Construimos la URL dinámica con los filtros
+        let url = `${API_URL}/api/v1/products?`;
+        if(searchTerm) url += `keyword=${searchTerm}&`;
+        if(selectedCategory) url += `category=${selectedCategory}`;
+
+        const response = await fetch(url);
         const data = await response.json();
         if (data.success) setProducts(data.products || []);
       } catch (error) { console.error(error); } 
       finally { setLoading(false); }
     };
-    fetchProducts();
-  }, []);
+    
+    // Pequeño retardo (debounce) para no saturar al escribir
+    const timeoutId = setTimeout(() => {
+        fetchProducts();
+    }, 300);
 
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, selectedCategory]); // Se re-ejecuta cuando cambian los filtros
+
+  // Función de compra
   const handleBuy = async (product) => {
     if (!token) return alert("Por favor inicia sesión para realizar una compra.");
-    
     if(!confirm(`¿Deseas comprar "${product.nombre}" por $${product.precio.minorista}?`)) return;
 
     try {
@@ -364,67 +432,51 @@ const ProductsPage = () => {
 
       const res = await fetch(`${API_URL}/api/v1/order/new`, {
         method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}` 
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(orderData)
       });
 
       if(res.ok) {
-        alert("✅ ¡Compra realizada con éxito! Revisa tu correo electrónico para ver la confirmación.");
+        alert("✅ ¡Compra realizada con éxito! Revisa tu correo electrónico.");
       } else {
         const errData = await res.json();
-        alert("Error al comprar: " + (errData.message || "Intente nuevamente"));
+        alert("Error: " + (errData.message || "Intente nuevamente"));
       }
     } catch(e) { console.error(e); alert("Error de conexión"); }
   };
 
-  if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div></div>;
-
   return (
     <div>
-      <div className="flex justify-between items-end mb-8">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900">Catálogo de Productos</h2>
-          <p className="text-gray-500 mt-2">Mostrando {products.length} productos disponibles</p>
-        </div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold text-gray-900">
+            {searchTerm ? `Resultados para "${searchTerm}"` : selectedCategory ? `Categoría: ${selectedCategory}` : "Catálogo Completo"}
+        </h2>
+        <span className="text-gray-500">{products.length} productos</span>
       </div>
       
-      {products.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
-          <div className="bg-gray-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Package className="w-10 h-10 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-bold text-gray-700">No hay productos aún</h3>
-          <p className="text-gray-500">El inventario está vacío por el momento.</p>
-        </div>
-      ) : (
+      {loading ? <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-100 border-t-blue-600"></div></div> : (
         <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {products.map((product) => (
-            <div key={product._id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
+          {products.map((p) => (
+            <div key={p._id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
               <div className="h-56 bg-gray-50 flex items-center justify-center relative overflow-hidden">
-                {product.imagenes && product.imagenes[0] ? (
-                   <img src={product.imagenes[0].url} alt={product.nombre} className="w-full h-full object-cover" />
+                {p.imagenes && p.imagenes[0] ? (
+                   <img src={p.imagenes[0].url} alt={p.nombre} className="w-full h-full object-cover" />
                 ) : (
                    <Package className="w-16 h-16 text-gray-300 group-hover:text-blue-500 transition duration-300" />
                 )}
                 <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs font-bold text-gray-700 shadow-sm">
-                  {product.categoria}
+                  {p.categoria}
                 </div>
               </div>
               <div className="p-5">
-                <h3 className="font-bold text-lg mb-1 truncate text-gray-800 group-hover:text-blue-600 transition">{product.nombre}</h3>
-                <p className="text-sm text-gray-500 mb-4 line-clamp-2 min-h-[2.5em]">{product.descripcion || "Sin descripción"}</p>
+                <h3 className="font-bold text-lg mb-1 truncate text-gray-800 group-hover:text-blue-600 transition">{p.nombre}</h3>
+                <p className="text-sm text-gray-500 mb-4 line-clamp-2 min-h-[2.5em]">{p.descripcion || "Sin descripción"}</p>
                 <div className="flex justify-between items-center pt-4 border-t border-gray-50">
                   <div>
                     <p className="text-xs text-gray-400 uppercase font-bold">Precio</p>
-                    <span className="text-xl font-black text-gray-900">${product.precio?.minorista?.toFixed(2)}</span>
+                    <span className="text-xl font-black text-gray-900">${p.precio?.minorista?.toFixed(2)}</span>
                   </div>
-                  <button 
-                    onClick={() => handleBuy(product)}
-                    className="bg-gray-900 text-white px-4 py-2.5 rounded-xl hover:bg-blue-600 transition shadow-lg shadow-gray-200 hover:shadow-blue-200 flex items-center gap-2 font-medium"
-                  >
+                  <button onClick={() => handleBuy(p)} className="bg-gray-900 text-white px-4 py-2.5 rounded-xl hover:bg-blue-600 transition shadow-lg flex items-center gap-2 font-medium">
                     <ShoppingCart className="w-4 h-4" /> Comprar
                   </button>
                 </div>
@@ -433,16 +485,24 @@ const ProductsPage = () => {
           ))}
         </div>
       )}
+      {!loading && products.length === 0 && (
+          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
+            <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-gray-600">No se encontraron productos</h3>
+            <p className="text-gray-400">Intenta con otra búsqueda o categoría.</p>
+          </div>
+      )}
     </div>
   );
 };
 
-const CategoriesPage = () => (
+// HU-018: Filtros por Categoría
+const CategoriesPage = ({ onSelectCategory }) => (
   <div>
-    <h2 className="text-3xl font-bold mb-8 text-gray-900">Categorías Populares</h2>
-    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {['Cuadernos', 'Papel', 'Oficina', 'Impresión', 'Arte', 'Escolares'].map((cat) => (
-        <div key={cat} className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl hover:border-blue-200 transition-all cursor-pointer text-center group">
+    <h2 className="text-3xl font-bold mb-8 text-gray-900">Explorar por Categorías</h2>
+    <div className="grid md:grid-cols-3 gap-6">
+      {['Cuadernos', 'Papel', 'Oficina', 'Escritura', 'Tecnología', 'Escolares'].map((cat) => (
+        <div key={cat} onClick={() => onSelectCategory(cat)} className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl hover:border-blue-200 transition-all cursor-pointer text-center group">
           <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-600 group-hover:scale-110 transition-all duration-300">
             <Grid className="w-10 h-10 text-blue-600 group-hover:text-white transition-colors duration-300" />
           </div>
@@ -453,6 +513,88 @@ const CategoriesPage = () => (
     </div>
   </div>
 );
+
+// HU-006: VISTA DE PERFIL (NUEVO)
+const ProfilePage = () => {
+    const { user, updateProfile } = useAuth();
+    const [formData, setFormData] = useState({ 
+        nombre: user?.nombre || '', 
+        email: user?.email || '', 
+        telefono: user?.telefono || '' 
+    });
+    const [isEditing, setIsEditing] = useState(false);
+
+    const handleSave = async () => {
+        const result = await updateProfile(formData);
+        if(result.success) {
+            setIsEditing(false);
+            alert("Perfil actualizado correctamente");
+        } else {
+            alert("Error al actualizar");
+        }
+    };
+
+    return (
+        <div className="max-w-2xl mx-auto bg-white p-8 rounded-3xl shadow-lg border border-gray-100 animate-fade-in">
+            <div className="flex items-center gap-6 mb-8 pb-6 border-b border-gray-100">
+                <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 border-4 border-white shadow-md">
+                    <UserIcon className="w-12 h-12" />
+                </div>
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-900">Mi Perfil</h2>
+                    <p className="text-gray-500 font-medium">{user?.role === 'admin' ? 'Administrador del Sistema' : 'Cliente Registrado'}</p>
+                </div>
+            </div>
+
+            <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Nombre Completo</label>
+                        <input 
+                            disabled={!isEditing} 
+                            value={formData.nombre} 
+                            onChange={e=>setFormData({...formData, nombre: e.target.value})}
+                            className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition disabled:bg-gray-50 disabled:text-gray-500" 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Teléfono</label>
+                        <input 
+                            disabled={!isEditing} 
+                            value={formData.telefono} 
+                            onChange={e=>setFormData({...formData, telefono: e.target.value})}
+                            className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition disabled:bg-gray-50 disabled:text-gray-500" 
+                        />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Correo Electrónico</label>
+                    <input 
+                        disabled={!isEditing} 
+                        value={formData.email} 
+                        onChange={e=>setFormData({...formData, email: e.target.value})}
+                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition disabled:bg-gray-50 disabled:text-gray-500" 
+                    />
+                </div>
+
+                <div className="pt-6 flex gap-4 justify-end">
+                    {isEditing ? (
+                        <>
+                            <button onClick={() => setIsEditing(false)} className="px-6 py-3 rounded-xl font-bold text-gray-600 hover:bg-gray-100 transition">Cancelar</button>
+                            <button onClick={handleSave} className="flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg">
+                                <Save className="w-5 h-5"/> Guardar Cambios
+                            </button>
+                        </>
+                    ) : (
+                        <button onClick={() => setIsEditing(true)} className="bg-gray-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-gray-800 transition shadow-lg">
+                            Editar Información
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // ==========================================
 // 5. SISTEMA DE ADMINISTRACIÓN (DASHBOARD)
