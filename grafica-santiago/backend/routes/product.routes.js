@@ -1,28 +1,33 @@
 const express = require('express');
 const router = express.Router();
 
-// ✅ CORRECCIÓN AQUÍ: Cambiamos a 'ProductController' (con mayúsculas)
-// Si tu archivo se llama diferente, asegúrate de que este nombre coincida EXACTO.
-const { 
-    getProducts, 
-    newProduct, 
-    getSingleProduct, 
-    updateProduct, 
-    deleteProduct 
+const {
+  getProducts,
+  newProduct,
+  getSingleProduct,
+  updateProduct,
+  deleteProduct,
+  addOrUpdateReview,
+  getReviews,
+  deleteReview
 } = require('../controllers/ProductController');
 
-// Importamos el middleware de seguridad
-const { isAuthenticatedUser, authorizeRoles } = require('../middlewares/auth');
+const { isAuthenticatedUser, authorizeRoles } = require('../middleware/auth.middleware');
 
-// Rutas Públicas
-router.route('/products').get(getProducts);
-router.route('/products/:id').get(getSingleProduct);
+// Públicas
+router.get('/products', getProducts);
+router.get('/products/:id', getSingleProduct);
+router.get('/products/:id/reviews', getReviews);
 
-// Rutas Privadas (Admin)
-router.route('/product/new').post(isAuthenticatedUser, authorizeRoles('admin'), newProduct);
+// Usuario logueado: crear/actualizar reseña
+router.post('/products/:id/reviews', isAuthenticatedUser, addOrUpdateReview);
 
-router.route('/admin/product/:id')
-    .put(isAuthenticatedUser, authorizeRoles('admin'), updateProduct)
-    .delete(isAuthenticatedUser, authorizeRoles('admin'), deleteProduct);
+// Borrar reseña: admin o dueño (validado dentro del controller)
+router.delete('/products/:id/reviews/:reviewId', isAuthenticatedUser, deleteReview);
+
+// Admin productos
+router.post('/product/new', isAuthenticatedUser, authorizeRoles('admin'), newProduct);
+router.put('/admin/product/:id', isAuthenticatedUser, authorizeRoles('admin'), updateProduct);
+router.delete('/admin/product/:id', isAuthenticatedUser, authorizeRoles('admin'), deleteProduct);
 
 module.exports = router;

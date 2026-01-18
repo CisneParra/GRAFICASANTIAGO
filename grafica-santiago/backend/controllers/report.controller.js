@@ -1,78 +1,64 @@
-const Order = require('../models/order.model');
 const Product = require('../models/product_model');
+const Order = require('../models/order.model');
 const User = require('../models/user_model');
 
-// HU044: Reporte de Ventas
-exports.getSalesReport = async (req, res) => {
-    try {
-        const { periodo } = req.query;
-        let fechaInicio = new Date();
+/**
+ * Reporte resumen para dashboard admin
+ * Devuelve:
+ * - total usuarios
+ * - total productos
+ * - total pedidos
+ * - total ventas (si existe totalPrice en Order)
+ * - pedidos por estado (si existe orderStatus en Order)
+ * - top 5 productos con más stock
+ */
+exports.getSummary = async (req, res) => {
+  try {
+    const [usersCount, productsCount, ordersCount] = await Promise.all([
+      User.countDocuments(),
+      Product.countDocuments(),
+      Order.countDocuments()
+    ]);
 
-        // Lógica de filtrado
-        if (periodo === 'semana') fechaInicio.setDate(fechaInicio.getDate() - 7);
-        if (periodo === 'mes') fechaInicio.setMonth(fechaInicio.getMonth() - 1);
-        if (periodo === 'año') fechaInicio.setFullYear(fechaInicio.getFullYear() - 1);
-        if (periodo === 'hoy') fechaInicio.setHours(0,0,0,0);
+    // Total ventas (si tu Order tiene totalPrice)
+    const totalSalesAgg = await Order.aggregate([
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$totalPrice', 0] } } } }
+    ]);
+    const totalSales = totalSalesAgg[0]?.total || 0;
 
-        const ventas = await Order.aggregate([
-            { $match: { createdAt: { $gte: fechaInicio } } },
-            { 
-                $group: { 
-                    _id: null, 
-                    ventasTotales: { $sum: "$totalPrice" }, // Usamos totalPrice del modelo Order
-                    cantidadPedidos: { $sum: 1 },
-                    promedioTicket: { $avg: "$totalPrice" }
-                } 
-            }
-        ]);
+    // Pedidos por estado (si tu Order tiene orderStatus)
+    const ordersByStatusAgg = await Order.aggregate([
+      {
+        $group: {
+          _id: { $ifNull: ['$orderStatus', 'Sin Estado'] },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
 
-        res.json({ 
-            success: true, 
-            data: { ventas: ventas[0] || { ventasTotales: 0, cantidadPedidos: 0, promedioTicket: 0 } } 
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
+    // Top 5 productos con más stock
+    const topStockProducts = await Product.find()
+      .sort({ stock: -1 })
+      .limit(5)
+      .select('nombre stock categoria precio');
 
-// HU045: Productos más vendidos (Simulado por stock por ahora, idealmente usar orders)
-exports.getBestSellers = async (req, res) => {
-    try {
-        const products = await Product.find().sort({ stock: -1 }).limit(5);
-        res.json({ success: true, data: products });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// HU046: Stock Bajo
-exports.getLowStock = async (req, res) => {
-    try {
-        const products = await Product.find({ stock: { $lte: 10 } });
-        res.json({ success: true, data: products });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// HU048: Top Clientes
-exports.getTopCustomers = async (req, res) => {
-    try {
-        // En producción haríamos un aggregate con Orders, por ahora devolvemos usuarios
-        const customers = await User.find({ role: 'user' }).limit(5);
-        res.json({ success: true, data: customers });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-// HU049: Métodos de Pago (Dummy Data por ahora)
-exports.getPaymentMethods = async (req, res) => {
-    res.json({ 
-        success: true, 
-        data: [
-            { metodo: 'transferencia', porcentaje: 40, cantidad: 20, montoTotal: 1500 },
-            { metodo: 'efectivo', porcentaje: 60, cantidad: 30, montoTotal: 2500 }
-        ] 
+    return res.json({
+      success: true,
+      summary: {
+        usersCount,
+        productsCount,
+        ordersCount,
+        totalSales,
+        ordersByStatus: ordersByStatusAgg,
+        topStockProducts
+      }
     });
+  } catch (error) {
+    console.error('REPORT SUMMARY ERROR:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al generar el resumen de reportes.'
+    });
+  }
 };

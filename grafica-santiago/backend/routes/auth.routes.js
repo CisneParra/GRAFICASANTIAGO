@@ -1,17 +1,16 @@
 const express = require('express');
 const router = express.Router();
 
-// CORRECCIÓN AQUÍ: Importamos desde '../controllers/AuthController'
-// (Asegúrate de que el archivo en controllers se llame exactamente "AuthController.js")
-const { registerUser, loginUser, logout, updateProfile } = require('../controllers/AuthController');
-const { isAuthenticatedUser } = require('../middlewares/auth');
+const AuthController = require('../controllers/AuthController');
+const { isAuthenticatedUser, authorizeRoles } = require('../middleware/auth.middleware');
 
-// Rutas Públicas
-router.route('/auth/register').post(registerUser);
-router.route('/auth/login').post(loginUser);
-router.route('/auth/logout').get(logout);
+router.post('/register', AuthController.register);
+router.post('/login', AuthController.login);
 
-// Rutas Privadas
-router.route('/me/update').put(isAuthenticatedUser, updateProfile);
+router.get('/me', isAuthenticatedUser, AuthController.getProfile);
+router.put('/me/update', isAuthenticatedUser, AuthController.updateProfile);
+
+// Admin
+router.get('/admin/users', isAuthenticatedUser, authorizeRoles('admin'), AuthController.getAllUsers);
 
 module.exports = router;

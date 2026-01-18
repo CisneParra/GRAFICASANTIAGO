@@ -1,26 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Estilos globales */
-body {
-  background-color: #f8fafc; /* Gris muy suave/azulado */
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+:root {
+  /* Identidad Gráfica Santiago */
+  --color-gs-blue: #0B3A5A;       /* Azul Oscuro */
+  --color-gs-blue-light: #1A5C85; /* Azul Claro */
+  --color-gs-yellow: #FFC300;     /* Amarillo */
+  --color-gs-yellow-hover: #FFD60A;
+  
+  --bg-color: #F8FAFC;
+  --text-primary: #1E293B;
+  --text-secondary: #64748B;
 }
 
-/* Personalización de la barra de desplazamiento */
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar personalizada */
 ::-webkit-scrollbar {
   width: 8px;
-  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #f1f1f1; 
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #cbd5e1; 
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #94a3b8; 
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
 }

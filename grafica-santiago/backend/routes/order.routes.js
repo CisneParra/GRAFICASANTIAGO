@@ -1,28 +1,25 @@
 const express = require('express');
 const router = express.Router();
 
-// Importamos el controlador (que crearemos en el paso 2)
-const { 
-    newOrder, 
-    getSingleOrder, 
-    myOrders, 
-    allOrders, 
-    updateOrder, 
-    deleteOrder 
+const {
+  newOrder,
+  getSingleOrder,
+  myOrders,
+  allOrders,
+  updateOrder,
+  deleteOrder
 } = require('../controllers/order.controller');
 
-// Importamos middleware de autenticación (si te da error, coméntalo)
 const { isAuthenticatedUser, authorizeRoles } = require('../middleware/auth.middleware');
 
-// Rutas
-router.route('/order/new').post(isAuthenticatedUser, newOrder);
-router.route('/order/:id').get(isAuthenticatedUser, getSingleOrder);
-router.route('/orders/me').get(isAuthenticatedUser, myOrders);
+// Usuario
+router.post('/order/new', isAuthenticatedUser, newOrder);
+router.get('/order/:id', isAuthenticatedUser, getSingleOrder);
+router.get('/orders/me', isAuthenticatedUser, myOrders);
 
-// Rutas Admin
-router.route('/admin/orders').get(isAuthenticatedUser, authorizeRoles('admin'), allOrders);
-router.route('/admin/order/:id')
-    .put(isAuthenticatedUser, authorizeRoles('admin'), updateOrder)
-    .delete(isAuthenticatedUser, authorizeRoles('admin'), deleteOrder);
+// Admin
+router.get('/admin/orders', isAuthenticatedUser, authorizeRoles('admin'), allOrders);
+router.put('/admin/order/:id', isAuthenticatedUser, authorizeRoles('admin'), updateOrder);
+router.delete('/admin/order/:id', isAuthenticatedUser, authorizeRoles('admin'), deleteOrder);
 
 module.exports = router;
