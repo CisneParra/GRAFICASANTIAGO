@@ -1,20 +1,12 @@
 const User = require('../models/user_model');
-const jwt = require('jsonwebtoken');
+const jwt = require('jsonwebtoken'); // Asegúrate de tener: npm install jsonwebtoken
 
-// Función auxiliar para crear y enviar el token
+// Función auxiliar para crear Token
 const sendToken = (user, statusCode, res) => {
-    // Crear token JWT
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'clave_super_secreta_cambiar_en_produccion', {
-        expiresIn: process.env.JWT_EXPIRE || '30d'
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+        expiresIn: '30d'
     });
-
-    // Opciones para la cookie
-    const options = {
-        expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 días
-        httpOnly: true
-    };
-
-    res.status(statusCode).cookie('token', token, options).json({
+    res.status(statusCode).json({
         success: true,
         token,
         user
@@ -23,45 +15,33 @@ const sendToken = (user, statusCode, res) => {
 
 class AuthController {
 
-    // Registrar Usuario
-    async register(req, res, next) {
+    // 1. Registro de usuario
+    async registerUser(req, res, next) {
         try {
-            const { nombre, apellido, email, password } = req.body;
-            
-            const user = await User.create({
-                nombre,
-                apellido,
-                email,
-                password
-            });
-
+            const { nombre, email, password, telefono } = req.body;
+            const user = await User.create({ nombre, email, password, telefono });
             sendToken(user, 201, res);
         } catch (error) {
             res.status(500).json({ success: false, message: error.message });
         }
     }
 
-    // Iniciar Sesión (Login)
-    async login(req, res, next) {
+    // 2. Login de usuario
+    async loginUser(req, res, next) {
         try {
             const { email, password } = req.body;
-
-            // Verificar si ingresó email y contraseña
             if (!email || !password) {
-                return res.status(400).json({ success: false, message: 'Por favor ingrese email y contraseña' });
+                return res.status(400).json({ message: 'Por favor ingrese email y contraseña' });
             }
 
-            // Buscar usuario en BD (incluyendo la contraseña que está oculta por defecto)
             const user = await User.findOne({ email }).select('+password');
-
             if (!user) {
-                return res.status(401).json({ success: false, message: 'Email o contraseña inválidos' });
+                return res.status(401).json({ message: 'Email o contraseña inválidos' });
             }
 
-            // Verificar contraseña
-            const isMatch = await user.matchPassword(password);
-            if (!isMatch) {
-                return res.status(401).json({ success: false, message: 'Email o contraseña inválidos' });
+            const isPasswordMatched = await user.comparePassword(password);
+            if (!isPasswordMatched) {
+                return res.status(401).json({ message: 'Email o contraseña inválidos' });
             }
 
             sendToken(user, 200, res);
@@ -70,61 +50,48 @@ class AuthController {
         }
     }
 
-    // Cerrar Sesión (Logout)
+    // 3. Cerrar sesión
     async logout(req, res, next) {
+        res.cookie('token', null, {
+            expires: new Date(Date.now()),
+            httpOnly: true
+        });
+        res.status(200).json({
+            success: true,
+            message: 'Cierre de sesión exitoso'
+        });
+    }
+
+    // 4. Actualizar Perfil (HU-006) - ¡NUEVO!
+    async updateProfile(req, res, next) {
         try {
-            res.cookie('token', null, {
-                expires: new Date(Date.now()),
-                httpOnly: true
+            const newUserData = {
+                nombre: req.body.nombre,
+                email: req.body.email,
+                telefono: req.body.telefono
+            };
+
+            // req.user.id viene del middleware de autenticación
+            const user = await User.findByIdAndUpdate(req.user._id, newUserData, {
+                new: true,
+                runValidators: true,
+                useFindAndModify: false
             });
 
             res.status(200).json({
                 success: true,
-                message: 'Sesión cerrada exitosamente'
+                user
             });
         } catch (error) {
             res.status(500).json({ success: false, message: error.message });
         }
     }
-
-    // --- Perfil de Usuario ---
-
-    // Ver mi perfil
-    async getUserProfile(req, res, next) {
-        try {
-            const user = await User.findById(req.user.id);
-            res.status(200).json({ success: true, user });
-        } catch (error) {
-            res.status(500).json({ success: false, message: error.message });
-        }
-    }
-
-    // Actualizar contraseña
-    async updatePassword(req, res, next) {
-        // Implementación básica para que no falle la ruta
-        res.status(200).json({ success: true, message: "Funcionalidad pendiente de implementar" });
-    }
-
-    // Actualizar perfil
-    async updateProfile(req, res, next) {
-        // Implementación básica
-        res.status(200).json({ success: true, message: "Funcionalidad pendiente de implementar" });
-    }
-
-    // --- Funciones de Recuperación (Placeholders para que no falle la ruta) ---
-    async forgotPassword(req, res, next) {
-        res.status(200).json({ success: true, message: "Revisar correo" });
-    }
-    
-    async resetPassword(req, res, next) {
-        res.status(200).json({ success: true, message: "Contraseña cambiada" });
-    }
-
-    // --- Funciones Admin (Placeholders) ---
-    async allUsers(req, res) { res.status(200).json({ success: true }); }
-    async getUserDetails(req, res) { res.status(200).json({ success: true }); }
-    async updateUser(req, res) { res.status(200).json({ success: true }); }
-    async deleteUser(req, res) { res.status(200).json({ success: true }); }
 }
 
-module.exports = new AuthController();
+const controller = new AuthController();
+module.exports = {
+    registerUser: (req, res, next) => controller.registerUser(req, res, next),
+    loginUser: (req, res, next) => controller.loginUser(req, res, next),
+    logout: (req, res, next) => controller.logout(req, res, next),
+    updateProfile: (req, res, next) => controller.updateProfile(req, res, next)
+};
