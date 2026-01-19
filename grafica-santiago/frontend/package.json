@@ -16,9 +16,10 @@
     "tailwindcss": "^3.4.19",
     "vite": "^5.0.0"
   },
-  "scripts": {
-    "dev": "vite",
+ "scripts": {
+    "dev": "vite --host", 
     "build": "vite build",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
-  }
+  },
 }
