@@ -3,7 +3,7 @@ const path = require('path');
 const csv = require('csv-parser');
 const mongoose = require('mongoose');
 
-// 👇 CONFIGURACIÓN BLINDADA (127.0.0.1)
+// 👇 CONFIGURACIÓN
 const MONGO_URI = 'mongodb://127.0.0.1:27017/grafica_santiago';
 
 console.log("------------------------------------------------");
@@ -12,7 +12,6 @@ console.log("------------------------------------------------");
 
 const Product = require('./models/product_model');
 
-// Archivos CSV
 const fileBase = path.join(__dirname, 'PRODUCTOS Y PRECIOS(REPORTE DE PRODUCTOS).csv');
 const filePrices = path.join(__dirname, 'PRODUCTOS Y PRECIOS(VENTANA CON PRECIOS).csv');
 
@@ -26,7 +25,8 @@ function parseDecimalComma(value) {
   if (value == null) return 0;
   const s = String(value).trim();
   if (!s) return 0;
-  const n = Number(s.replace(',', '.'));
+  const clean = s.replace(/[^0-9,.-]/g, '');
+  const n = Number(clean.replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -35,16 +35,28 @@ function parseIntSafe(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// 👇 FUNCIÓN INTELIGENTE PARA ELEGIR CATEGORÍA
-function pickCategory(r) {
-    // 1. Busca en G3, si no hay, busca en G2, si no, en G1
-    let rawCat = (r.G3 || r.G2 || r.G1 || 'General').trim();
-    
-    // 2. Si está vacío, pon 'General'
-    if (!rawCat) rawCat = 'General';
+// 👇 LÓGICA DE CATEGORÍAS (G2 = Cat, G3 = Subcat)
+function getCategoryData(r) {
+    const g1 = (r.G1 || '').trim();
+    const g2 = (r.G2 || '').trim();
+    const g3 = (r.G3 || '').trim();
 
-    // 3. Formato bonito: "PAPELES" -> "Papeles"
-    return rawCat.charAt(0).toUpperCase() + rawCat.slice(1).toLowerCase();
+    // 1. Definir Categoría Principal (Prioridad G2, si no G1)
+    let cat = 'General';
+    if (g2 && g2.length > 1) cat = g2;
+    else if (g1 && g1.length > 1) cat = g1;
+
+    // 2. Definir Subcategoría (G3)
+    let sub = '';
+    if (g3 && g3.length > 1) sub = g3;
+
+    // Formato Capitalizado (Primera mayúscula, resto minúscula)
+    const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
+    return {
+        categoria: capitalize(cat),
+        subcategoria: sub ? capitalize(sub) : ''
+    };
 }
 
 function readCsv(filePath, separator = ';') {
@@ -54,7 +66,10 @@ function readCsv(filePath, separator = ';') {
       return reject(new Error(`No existe el archivo: ${filePath}`));
     }
     fs.createReadStream(filePath)
-      .pipe(csv({ separator })) // 👈 OJO: Asegúrate que tu CSV usa punto y coma (;), si usa comas pon ','
+      .pipe(csv({ 
+          separator,
+          mapHeaders: ({ header }) => header.trim().replace(/^\uFEFF/, '') 
+      })) 
       .on('data', (row) => rows.push(row))
       .on('end', () => resolve(rows))
       .on('error', reject);
@@ -65,7 +80,11 @@ async function run() {
   await mongoose.connect(MONGO_URI);
   console.log('✅ Conexión establecida.');
 
-  // 1) Cargar precios
+  console.log('🗑️  Limpiando base de datos para recargar estructura nueva...');
+  await Product.deleteMany({});
+
+  // 1) PRECIOS
+  console.log('📖 Leyendo precios...');
   const priceRows = await readCsv(filePrices, ';');
   const pricesByCod = new Map();
 
@@ -78,36 +97,40 @@ async function run() {
     });
   }
 
-  // 2) Cargar productos
+  // 2) PRODUCTOS
+  console.log('📖 Procesando productos (G2 -> Categoria, G3 -> Subcategoria)...');
   const baseRows = await readCsv(fileBase, ';');
   const ops = [];
 
   for (const r of baseRows) {
     const cod = normCod(r.COD);
-    const p = pricesByCod.get(cod) || { stock: 0, pvp: 0, mayor: 0 };
+    const p = pricesByCod.get(cod);
 
-    // Usamos la función inteligente aquí 👇
-    const realCategory = pickCategory(r);
+    if (!r.NOM) continue;
+
+    const finalStock = p ? p.stock : 0;
+    const finalPvp = p ? p.pvp : 0;
+    const finalMayor = p ? p.mayor : 0;
+
+    // Usamos la nueva lógica
+    const { categoria, subcategoria } = getCategoryData(r);
 
     const doc = {
       cod,
-      nombre: (r.NOM || '').trim() || `Producto ${cod}`,
-      descripcion: (r.DES || '').trim() || 'Sin descripción.',
+      nombre: r.NOM.trim(),
+      descripcion: (r.DES || '').trim() || r.NOM.trim(),
       precio: {
-        minorista: p.pvp,
-        mayorista: p.mayor
+        minorista: finalPvp,
+        mayorista: finalMayor
       },
-      stock: p.stock,
+      stock: finalStock,
       
-      categoria: realCategory, // ✅ AQUI VA LA CATEGORÍA REAL DEL EXCEL
-      
-      activo: true, // ✅ ESTO ES CRUCIAL (lo que agregamos antes)
-      imagenes: [
-        {
-            public_id: `prod_${cod}`,
-            url: "https://via.placeholder.com/300?text=Grafica+Santiago"
-        }
-      ]
+      // Nuevos campos
+      categoria: categoria,
+      subcategoria: subcategoria,
+
+      activo: true,
+      imagenes: [{ url: "https://via.placeholder.com/300?text=GS" }]
     };
 
     ops.push({
@@ -120,11 +143,11 @@ async function run() {
   }
 
   if (ops.length) {
-    const result = await Product.bulkWrite(ops);
-    console.log(`✅ Seed terminado. ${ops.length} productos procesados.`);
-    console.log('   Modificados/Insertados:', result.modifiedCount + result.upsertedCount);
+    console.log(`🚀 Guardando ${ops.length} productos...`);
+    await Product.bulkWrite(ops);
+    console.log(`✅ Base de datos actualizada con éxito.`);
   } else {
-    console.log('⚠️ No se encontraron filas en CSV.');
+    console.log('⚠️ No se encontraron productos.');
   }
 
   await mongoose.disconnect();
@@ -132,6 +155,6 @@ async function run() {
 }
 
 run().catch((e) => {
-  console.error('❌ Error seed:', e);
+  console.error('❌ Error:', e);
   process.exit(1);
 });

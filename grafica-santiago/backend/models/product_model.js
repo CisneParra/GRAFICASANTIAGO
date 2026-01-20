@@ -1,9 +1,7 @@
 const mongoose = require('mongoose');
 
-
-
 const productSchema = new mongoose.Schema({
-  cod: { 
+    cod: { 
         type: String, 
         trim: true,
         default: '' 
@@ -32,21 +30,36 @@ const productSchema = new mongoose.Schema({
     },
     categoria: {
         type: String,
-        required: [true, 'La categoría es obligatoria'],
-        // enum: ['Papelería', 'Tecnología', 'Libros', 'Oficina', 'Arte', 'Otros', 'Cuadernos', 'Papel', 'Escritura']
+        required: [true, 'La categoría es obligatoria']
+    },
+    // 👇 NUEVO CAMPO PARA G3
+    subcategoria: {
+        type: String,
+        default: ''
     },
     imagenes: [
         {
-            url: { type: String }
+            public_id: String,
+            url: String
         }
     ],
+    // 👇 ASEGURAMOS QUE ESTO EXISTA PARA LAS RESEÑAS
+    reviews: [
+        {
+            user: { type: mongoose.Schema.ObjectId, ref: 'User', required: true },
+            nombre: { type: String, required: true },
+            rating: { type: Number, required: true },
+            comentario: { type: String, required: true }
+        }
+    ],
+    numResenas: { type: Number, default: 0 },
+    ratingPromedio: { type: Number, default: 0 },
     fechaCreacion: {
         type: Date,
         default: Date.now
     }
 });
 
-// 🔥 AQUÍ ES EL LUGAR CORRECTO (Después de crear el esquema, antes de exportar)
 productSchema.index({ stock: -1 });
 
 module.exports = mongoose.model('Product', productSchema);
