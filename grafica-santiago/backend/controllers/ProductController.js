@@ -1,250 +1,130 @@
-const mongoose = require('mongoose');
 const Product = require('../models/product_model');
 
-/**
- * GET /api/v1/products
- * Query:
- * - category
- * - keyword
- */
-exports.getProducts = async (req, res) => {
-  try {
-    const query = { activo: true };
+// 1. OBTENER TODOS LOS PRODUCTOS (Con Filtros y Límite)
+exports.getProducts = async (req, res, next) => {
+    try {
+        const keyword = req.query.keyword ? {
+            nombre: {
+                $regex: req.query.keyword,
+                $options: 'i'
+            }
+        } : {};
 
-    if (req.query.category) {
-      // categoría amplia: "Papel" trae "Papel Bond", etc.
-      query.categoria = { $regex: req.query.category, $options: 'i' };
+        const categoryFilter = req.query.category && req.query.category !== 'Todas' 
+            ? { categoria: req.query.category } 
+            : {};
+
+        // Si mandan ?limit=1000, usamos 1000. Si no, 0 (todos).
+        const limit = Number(req.query.limit) || 0; 
+
+        const products = await Product.find({ ...keyword, ...categoryFilter })
+                                      .limit(limit)
+                                      .sort({ fechaCreacion: -1 });
+
+        const count = await Product.countDocuments({ ...keyword, ...categoryFilter });
+
+        res.status(200).json({
+            success: true,
+            count: products.length,
+            totalDocs: count,
+            products
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
-
-    if (req.query.keyword) {
-      query.nombre = { $regex: req.query.keyword, $options: 'i' };
-    }
-
-    const products = await Product.find(query)
-      .select('nombre precio stock categoria imagenes ratingPromedio numResenas')
-      .limit(200);
-
-    res.json({ success: true, count: products.length, products });
-  } catch (error) {
-    console.error('GET PRODUCTS ERROR:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener productos' });
-  }
 };
 
-exports.getSingleProduct = async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: 'ID inválido' });
+// 2. CREAR PRODUCTO
+exports.newProduct = async (req, res, next) => {
+    try {
+        if (!req.body.imagenes || req.body.imagenes.length === 0) {
+            req.body.imagenes = [{ url: 'https://via.placeholder.com/300?text=Sin+Imagen' }];
+        }
+        const product = await Product.create(req.body);
+        res.status(201).json({ success: true, product });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
-
-    const product = await Product.findById(id)
-      .select('-reviews') // para no traer reseñas en la ficha si hay muchas
-      .lean();
-
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Producto no encontrado' });
-    }
-
-    res.json({ success: true, product });
-  } catch (error) {
-    console.error('GET SINGLE PRODUCT ERROR:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener el producto' });
-  }
 };
 
-exports.newProduct = async (req, res) => {
-  try {
-    const created = await Product.create(req.body);
-    res.status(201).json({ success: true, product: created });
-  } catch (error) {
-    console.error('NEW PRODUCT ERROR:', error);
-    res.status(500).json({ success: false, message: 'Error al crear producto' });
-  }
+// 3. OBTENER UN SOLO PRODUCTO
+exports.getSingleProduct = async (req, res, next) => {
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) return res.status(404).json({ success: false, message: 'Producto no encontrado' });
+        res.status(200).json({ success: true, product });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 };
 
-exports.updateProduct = async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: 'ID inválido' });
-    }
+// 4. ACTUALIZAR PRODUCTO
+exports.updateProduct = async (req, res, next) => {
+    try {
+        let product = await Product.findById(req.params.id);
+        if (!product) return res.status(404).json({ success: false, message: 'Producto no encontrado' });
 
-    const updated = await Product.findByIdAndUpdate(id, req.body, { new: true });
-    if (!updated) {
-      return res.status(404).json({ success: false, message: 'Producto no encontrado' });
-    }
+        product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+            new: true,
+            runValidators: true
+        });
 
-    res.json({ success: true, product: updated });
-  } catch (error) {
-    console.error('UPDATE PRODUCT ERROR:', error);
-    res.status(500).json({ success: false, message: 'Error al actualizar producto' });
-  }
+        res.status(200).json({ success: true, product });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 };
 
-exports.deleteProduct = async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: 'ID inválido' });
-    }
+// 5. ELIMINAR PRODUCTO
+exports.deleteProduct = async (req, res, next) => {
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) return res.status(404).json({ success: false, message: 'Producto no encontrado' });
 
-    const deleted = await Product.findByIdAndDelete(id);
-    if (!deleted) {
-      return res.status(404).json({ success: false, message: 'Producto no encontrado' });
+        await product.deleteOne();
+        res.status(200).json({ success: true, message: 'Producto eliminado correctamente' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
-
-    res.json({ success: true, message: 'Producto eliminado' });
-  } catch (error) {
-    console.error('DELETE PRODUCT ERROR:', error);
-    res.status(500).json({ success: false, message: 'Error al eliminar producto' });
-  }
 };
 
-/**
- * ⭐ POST /api/v1/products/:id/reviews
- * Body: { rating, comentario }
- * Requiere login
- */
-exports.addOrUpdateReview = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { rating, comentario } = req.body;
+// 6. CREAR/ACTUALIZAR RESEÑA
+exports.createProductReview = async (req, res) => {
+    try {
+        const { rating, comment, productId } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: 'ID inválido' });
+        const review = {
+            user: req.user._id,
+            nombre: req.user.nombre,
+            rating: Number(rating),
+            comentario: comment
+        };
+
+        const product = await Product.findById(productId);
+        if(!product) return res.status(404).json({success: false, message: "Producto no encontrado"});
+
+        const isReviewed = product.reviews.find(
+            r => r.user.toString() === req.user._id.toString()
+        );
+
+        if (isReviewed) {
+            product.reviews.forEach(review => {
+                if (review.user.toString() === req.user._id.toString()) {
+                    review.comentario = comment;
+                    review.rating = rating;
+                }
+            });
+        } else {
+            product.reviews.push(review);
+            product.numResenas = product.reviews.length;
+        }
+
+        product.ratingPromedio = product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
+
+        await product.save({ validateBeforeSave: false });
+
+        res.status(200).json({ success: true, message: "Reseña guardada" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
-
-    const r = Number(rating);
-    if (!r || r < 1 || r > 5) {
-      return res.status(400).json({ success: false, message: 'Rating debe ser 1 a 5' });
-    }
-
-    if (!comentario || String(comentario).trim().length < 3) {
-      return res.status(400).json({ success: false, message: 'Comentario muy corto' });
-    }
-
-    const product = await Product.findById(id);
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Producto no encontrado' });
-    }
-
-    const userId = req.user._id.toString();
-
-    // Si ya reseñó, se actualiza
-    const existing = product.reviews.find(rv => rv.user.toString() === userId);
-
-    if (existing) {
-      existing.rating = r;
-      existing.comentario = String(comentario).trim();
-      existing.nombre = `${req.user.nombre} ${req.user.apellido}`.trim();
-    } else {
-      product.reviews.push({
-        user: req.user._id,
-        nombre: `${req.user.nombre} ${req.user.apellido}`.trim(),
-        rating: r,
-        comentario: String(comentario).trim()
-      });
-    }
-
-    // Recalcular promedio
-    product.numResenas = product.reviews.length;
-    product.ratingPromedio =
-      product.reviews.reduce((acc, item) => acc + item.rating, 0) / product.reviews.length;
-
-    await product.save();
-
-    res.status(201).json({
-      success: true,
-      message: existing ? 'Reseña actualizada' : 'Reseña agregada',
-      ratingPromedio: product.ratingPromedio,
-      numResenas: product.numResenas
-    });
-  } catch (error) {
-    console.error('ADD REVIEW ERROR:', error);
-    res.status(500).json({ success: false, message: 'Error al guardar reseña' });
-  }
-};
-
-/**
- * ⭐ GET /api/v1/products/:id/reviews
- * Lista reseñas de un producto
- */
-exports.getReviews = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: 'ID inválido' });
-    }
-
-    const product = await Product.findById(id)
-      .select('reviews ratingPromedio numResenas')
-      .populate('reviews.user', 'nombre apellido');
-
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Producto no encontrado' });
-    }
-
-    res.json({
-      success: true,
-      ratingPromedio: product.ratingPromedio,
-      numResenas: product.numResenas,
-      reviews: product.reviews
-    });
-  } catch (error) {
-    console.error('GET REVIEWS ERROR:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener reseñas' });
-  }
-};
-
-/**
- * ⭐ DELETE /api/v1/products/:id/reviews/:reviewId
- * Permisos: admin o dueño de la reseña
- */
-exports.deleteReview = async (req, res) => {
-  try {
-    const { id, reviewId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(reviewId)) {
-      return res.status(400).json({ success: false, message: 'ID inválido' });
-    }
-
-    const product = await Product.findById(id);
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Producto no encontrado' });
-    }
-
-    const review = product.reviews.id(reviewId);
-    if (!review) {
-      return res.status(404).json({ success: false, message: 'Reseña no encontrada' });
-    }
-
-    const isOwner = review.user.toString() === req.user._id.toString();
-    const isAdmin = req.user.role === 'admin';
-
-    if (!isOwner && !isAdmin) {
-      return res.status(403).json({ success: false, message: 'No tienes permiso para borrar esta reseña' });
-    }
-
-    review.deleteOne();
-
-    // Recalcular promedio
-    product.numResenas = product.reviews.length;
-    product.ratingPromedio = product.reviews.length
-      ? product.reviews.reduce((acc, item) => acc + item.rating, 0) / product.reviews.length
-      : 0;
-
-    await product.save();
-
-    res.json({
-      success: true,
-      message: 'Reseña eliminada',
-      ratingPromedio: product.ratingPromedio,
-      numResenas: product.numResenas
-    });
-  } catch (error) {
-    console.error('DELETE REVIEW ERROR:', error);
-    res.status(500).json({ success: false, message: 'Error al eliminar reseña' });
-  }
 };
