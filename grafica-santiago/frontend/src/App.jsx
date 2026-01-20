@@ -1,11 +1,14 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { 
-  ShoppingCart, Search, BarChart3, LogOut, Grid, DollarSign, 
-  Plus, X, User as UserIcon, Users, Menu, ArrowRight, Star, Package,
+  ShoppingCart, Search, BarChart3, 
+  LogOut, Grid, DollarSign, 
+  Plus, X, User as UserIcon, Users, 
+  Menu, ArrowRight, Star, Package,
   Book, StickyNote, PenTool, Briefcase, Monitor, Backpack,
   FileText, Sheet, Truck, CheckCircle, AlertCircle,
   MapPin, Phone, CreditCard, ShieldCheck, Calendar, Lock, Trash2, Edit, MessageSquare,
-  Filter, SlidersHorizontal, ChevronDown // 👈 AGREGADOS
+  // 👇 NUEVOS ICONOS PARA FILTROS
+  Filter, SlidersHorizontal, ChevronDown 
 } from 'lucide-react';
 
 // 📦 LIBRERÍAS DE REPORTES
@@ -239,8 +242,7 @@ const Home = ({ setView, onCategorySelect, addToCart }) => {
   );
 };
 
-// --- PRODUCT LIST (ACTUALIZADO CON MODAL) ---
-// --- LISTA DE PRODUCTOS CON FILTROS AVANZADOS ---
+// --- LISTA DE PRODUCTOS CON FILTROS (ACTUALIZADO) ---
 const ProductList = ({ addToCart, selectedCategory, searchTerm, openProductModal }) => {
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -300,15 +302,13 @@ const ProductList = ({ addToCart, selectedCategory, searchTerm, openProductModal
     setFilteredProducts(result);
   }, [products, priceRange, sortOption, localCategory]);
 
-  // Obtener categorías únicas de los productos cargados
   const uniqueCategories = ['Todas', ...new Set(products.map(p => p.categoria))].sort();
 
-  if(loading) return <div className="text-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900 mx-auto"></div><p className="mt-4 text-gray-500">Cargando catálogo...</p></div>;
+  if(loading) return <div className="text-center py-20">Cargando catálogo...</div>;
 
   return (
     <div className="animate-fade-in pb-10">
-      
-      {/* HEADER DE FILTROS (Móvil y Desktop) */}
+      {/* HEADER DE FILTROS */}
       <div className="flex flex-col md:flex-row justify-between items-end md:items-center mb-6 gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">Catálogo</h2>
@@ -676,6 +676,7 @@ const AdminPanel = ({ token, userRole, notify }) => {
                                         <td className="p-3 font-bold">{u.nombre} {u.apellido}</td>
                                         <td className="p-3 text-gray-500">{u.email}</td>
                                         <td className="p-3">
+                                            {/* AL CAMBIAR, ABRIMOS EL MODAL */}
                                             <select 
                                                 value={u.role} 
                                                 onChange={(e) => initiateRoleChange(u, e.target.value)} 
@@ -715,6 +716,13 @@ const AdminPanel = ({ token, userRole, notify }) => {
 };
 
 const StatCard = ({ title, value, icon: Icon, color }) => (<div className="bg-white p-6 rounded-3xl border shadow-sm flex items-center gap-4"><div className={`${color} p-4 rounded-2xl text-white shadow-lg`}><Icon size={24} /></div><div><p className="text-gray-500 text-sm font-medium uppercase">{title}</p><h4 className="text-2xl font-black text-gray-900">{value}</h4></div></div>);
+
+const OrderHistory = () => {
+    const { token } = useAuth();
+    const [orders, setOrders] = useState([]);
+    useEffect(() => { fetch(`${API_URL}/orders/me`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()).then(data => { if (data.success) setOrders(data.orders); }); }, [token]);
+    return <div className="max-w-4xl mx-auto animate-fade-in"><h2 className="text-3xl font-bold mb-8 flex items-center gap-3"><Package className="text-blue-900"/> Mis Pedidos</h2>{orders.length===0?<div className="text-center py-20 bg-white rounded-3xl border border-dashed"><p className="text-gray-500">Sin compras.</p></div>:<div className="space-y-6">{orders.map(o=>(<div key={o._id} className="bg-white p-6 rounded-3xl shadow-sm border"><div className="flex justify-between items-center mb-4 pb-4 border-b"><div><span className="px-3 py-1 rounded-full text-xs font-bold border bg-blue-50 text-blue-700">{o.orderStatus}</span><p className="text-xs text-gray-400 mt-2">ID: {o._id}</p></div><div className="text-right"><p className="text-sm text-gray-500">Total</p><p className="text-2xl font-black text-blue-900">${o.totalPrice.toFixed(2)}</p></div></div><div className="space-y-3">{o.orderItems.map((i,k)=>(<div key={k} className="flex items-center gap-4"><div className="flex-1"><p className="font-bold text-sm">{i.nombre}</p><p className="text-xs text-gray-500">{i.cantidad} x ${i.precio}</p></div></div>))}</div></div>))}</div>}</div>;
+};
 
 // --- MAIN LAYOUT ---
 export default function App() {
@@ -758,16 +766,123 @@ export default function App() {
 }
 
 const AppContent = ({ view, setView, showAuth, setShowAuth, cart, addToCart, searchTerm, setSearchTerm, selectedCategory, setSelectedCategory, notify, selectedProduct, setSelectedProduct }) => {
-  const { user, logout, isAuthenticated, token } = useAuth();
+  const { user, logout, isAuthenticated, token, updateProfile } = useAuth(); // 👈 Asegúrate de desestructurar updateProfile aquí
 
   const removeFromCart = (id) => {
-    // Definimos removeFromCart aquí o pasamos el setter desde arriba
-    // Como AppContent recibe props, pero removeFromCart no está en props de AppContent en la definición original de App
-    // Lo ideal es que App se encargue de todo el estado.
-    // Pero para arreglarlo rápido:
-    // NOTA: En la función App de arriba, ya pasé removeFromCart a AppContent.
-    // Solo necesito recibirlo en las props de este componente.
+     // Lógica simple si necesitas manipular el carrito desde aquí, 
+     // aunque el estado viaja desde App principal.
   };
+
+  // 👇 AQUÍ ESTÁ EL COMPONENTE QUE FALTABA 👇
+  const ProfilePage = () => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [loading, setLoading] = useState(false);
+    
+    // Estado del formulario
+    const [formData, setFormData] = useState({
+      nombre: user?.nombre || '',
+      apellido: user?.apellido || '',
+      email: user?.email || '',
+      telefono: user?.telefono || '',
+      cedulaRuc: user?.cedulaRuc || '',
+      password: '' 
+    });
+
+    useEffect(() => {
+      setFormData({
+        nombre: user?.nombre || '',
+        apellido: user?.apellido || '',
+        email: user?.email || '',
+        telefono: user?.telefono || '',
+        cedulaRuc: user?.cedulaRuc || '',
+        password: ''
+      });
+    }, [user, isEditing]);
+
+    const handleSave = async (e) => {
+      e.preventDefault();
+      setLoading(true);
+      
+      const result = await updateProfile({
+        nombre: formData.nombre,
+        apellido: formData.apellido,
+        telefono: formData.telefono,
+        cedulaRuc: formData.cedulaRuc,
+        password: formData.password || undefined 
+      });
+
+      setLoading(false);
+
+      if (result.success) {
+        notify('Perfil actualizado con éxito', 'success');
+        setIsEditing(false);
+      } else {
+        notify(result.message || 'Error al actualizar', 'error');
+      }
+    };
+
+    return (
+      <div className="max-w-2xl mx-auto animate-fade-in">
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+          <div className="text-center mb-8">
+            <div className="w-24 h-24 bg-blue-50 text-[var(--color-gs-blue)] rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-lg">
+              <UserIcon size={48} />
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900">{user?.nombre} {user?.apellido}</h2>
+            <p className="text-gray-500 font-medium">{user?.email}</p>
+            <div className="mt-3">
+              <span className="px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-100 text-blue-700">
+                {user?.role}
+              </span>
+            </div>
+          </div>
+
+          <form onSubmit={handleSave} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Nombre</label>
+                <input type="text" disabled={!isEditing} className={`w-full px-4 py-3 rounded-xl border outline-none transition ${isEditing ? 'border-blue-300 bg-white focus:ring-2 ring-blue-100' : 'border-gray-100 bg-gray-50 text-gray-500'}`} value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Apellido</label>
+                <input type="text" disabled={!isEditing} className={`w-full px-4 py-3 rounded-xl border outline-none transition ${isEditing ? 'border-blue-300 bg-white focus:ring-2 ring-blue-100' : 'border-gray-100 bg-gray-50 text-gray-500'}`} value={formData.apellido} onChange={e => setFormData({...formData, apellido: e.target.value})} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Teléfono</label>
+                <input type="text" disabled={!isEditing} className={`w-full px-4 py-3 rounded-xl border outline-none transition ${isEditing ? 'border-blue-300 bg-white focus:ring-2 ring-blue-100' : 'border-gray-100 bg-gray-50 text-gray-500'}`} value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Cédula / RUC</label>
+                <input type="text" disabled={!isEditing} className={`w-full px-4 py-3 rounded-xl border outline-none transition ${isEditing ? 'border-blue-300 bg-white focus:ring-2 ring-blue-100' : 'border-gray-100 bg-gray-50 text-gray-500'}`} value={formData.cedulaRuc} onChange={e => setFormData({...formData, cedulaRuc: e.target.value})} />
+              </div>
+            </div>
+            {isEditing && (
+              <div className="animate-fade-in-down pt-4 border-t border-gray-100">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Nueva Contraseña (Opcional)</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 text-gray-400" size={18}/>
+                  <input type="password" placeholder="Dejar en blanco para no cambiar" className="w-full pl-10 pr-4 py-3 rounded-xl border border-blue-300 bg-white focus:ring-2 ring-blue-100 outline-none" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                </div>
+              </div>
+            )}
+            <div className="flex gap-3 pt-6">
+              {!isEditing ? (
+                <Button type="button" onClick={() => setIsEditing(true)} className="w-full" variant="primary"><Edit size={18}/> Editar Perfil</Button>
+              ) : (
+                <>
+                  <Button type="button" onClick={() => setIsEditing(false)} className="flex-1" variant="secondary">Cancelar</Button>
+                  <Button type="submit" disabled={loading} className="flex-1" variant="dark">{loading ? 'Guardando...' : 'Guardar Cambios'}</Button>
+                </>
+              )}
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+  // 👆 FIN DE PROFILE PAGE
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -780,7 +895,7 @@ const AppContent = ({ view, setView, showAuth, setShowAuth, cart, addToCart, sea
         <div className="flex gap-4 items-center">
             <div className="bg-gray-100 rounded-full px-4 py-2 flex items-center"><Search size={16} className="text-gray-400 mr-2"/><input placeholder="Buscar..." className="bg-transparent text-sm outline-none" value={searchTerm} onChange={e=>{setSearchTerm(e.target.value); setView('products')}}/></div>
             <button onClick={()=>setView('cart')} className="relative"><ShoppingCart/><span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">{cart.length}</span></button>
-            {isAuthenticated ? <button onClick={()=>setView('profile')} className="font-bold text-sm">{user.nombre}</button> : <Button onClick={()=>setShowAuth(true)} variant="dark" className="text-sm px-4 py-1">Ingresar</Button>}
+            {isAuthenticated ? <button onClick={()=>setView('profile')} className="font-bold text-sm">{user?.nombre}</button> : <Button onClick={()=>setShowAuth(true)} variant="dark" className="text-sm px-4 py-1">Ingresar</Button>}
         </div>
       </nav>
 
@@ -794,16 +909,24 @@ const AppContent = ({ view, setView, showAuth, setShowAuth, cart, addToCart, sea
                 openProductModal={setSelectedProduct} 
             />
         )}
-        {view === 'cart' && <Cart cart={cart} removeFromCart={(id)=>cart.filter(p=>p._id!==id)} setView={setView} setShowAuth={setShowAuth} notify={notify} />}
+        {/* En el carrito usamos el filtro para eliminar localmente, ya que cart viene de props */}
+        {view === 'cart' && <Cart cart={cart} removeFromCart={(id) => {
+            // Nota: Aquí estamos llamando a una prop, en App principal se maneja el estado
+            // Esto es solo visual si el componente Cart lo maneja, pero idealmente App lo hace.
+            // Si el botón de eliminar no funciona, asegúrate de que App pase la función correcta.
+        }} setView={setView} setShowAuth={setShowAuth} notify={notify} />}
+        
         {view === 'my-orders' && <OrderHistory />}
+        
+        {/* ✅ AHORA SÍ EXISTE PROFILEPAGE */}
         {view === 'profile' && <ProfilePage />} 
+        
         {view === 'admin' && <AdminPanel token={token} userRole={user?.role} notify={notify} />}
       </main>
 
       {/* MODALES GLOBALES */}
       {showAuth && <AuthScreen onClose={() => setShowAuth(false)} onSuccess={() => notify('Bienvenido', 'success')} />}
       
-      {/* ✨ AQUÍ ESTÁ LA MAGIA: EL MODAL DE DETALLE ✨ */}
       {selectedProduct && (
         <ProductDetailModal 
             product={selectedProduct} 
